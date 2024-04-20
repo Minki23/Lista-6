@@ -28,7 +28,17 @@ class SSHLogEntry(ABC):
     
     @abstractmethod
     def validate(self):
-        pass
+        second_parse=split_into_content(self.raw_content)
+        if second_parse["time"]!=self.time:
+            return False
+        if second_parse["user"]!=self.hostname:
+            return False
+        if second_parse["code"]!=self.pid:
+            return False
+        if second_parse["message"]!=self.message:
+            return False
+        return True
+    
     @property
     def has_ip(self):
         return self.get_ipv4_address() is not None
@@ -54,50 +64,34 @@ class SSHLogEntry(ABC):
 class PasswordRejected(SSHLogEntry):
     def __init__(self, content):
         super().__init__(content)
+        self.message_type = get_message_type(self.message)
     
     def validate(self):
-        second_parse=split_into_content(self.raw_content)
-        if second_parse["time"]!=self.time:
-            return False
-        if second_parse["user"]!=self.hostname:
-            return False
-        if second_parse["code"]!=self.pid:
-            return False
-        if second_parse["message"]!=self.message:
-            return False
-        return True
+        if re.match(r'^.*Failed password.*$', self.message) is not None:
+            return True
+        return False
 
 class PasswordAccepted(SSHLogEntry):
     def __init__(self, content):
         super().__init__(content)
+        self.message_type = get_message_type(self.message)
     
     def validate(self):
-        second_parse=split_into_content(self.raw_content)
-        if second_parse["time"]!=self.time:
-            return False
-        if second_parse["user"]!=self.hostname:
-            return False
-        if second_parse["code"]!=self.pid:
-            return False
-        if second_parse["message"]!=self.message:
-            return False
-        return True
+        super().validate()
+        if re.match(r'^.*Accepted password.*$', self.message) is not None:
+            return True
+        return False
 
 class Error(SSHLogEntry):
     def __init__(self, content):
         super().__init__(content)
+        self.message_type = get_message_type(self.message)
     
     def validate(self):
-        second_parse=split_into_content(self.raw_content)
-        if second_parse["time"]!=self.time:
-            return False
-        if second_parse["user"]!=self.hostname:
-            return False
-        if second_parse["code"]!=self.pid:
-            return False
-        if second_parse["message"]!=self.message:
-            return False
-        return True
+        super().validate()
+        if re.match(r'^.*error*$', self.message) is not None:
+            return True
+        return False
 
 class OtherInfo(SSHLogEntry):
     def __init__(self, content):
@@ -105,16 +99,8 @@ class OtherInfo(SSHLogEntry):
         self.info = self.raw_content 
     
     def validate(self):
-        second_parse=split_into_content(self.raw_content)
-        if second_parse["time"]!=self.time:
-            return False
-        if second_parse["user"]!=self.hostname:
-            return False
-        if second_parse["code"]!=self.pid:
-            return False
-        if second_parse["message"]!=self.message:
-            return False
-        return True
+        super().validate()
+    
 class SSHLogJournal:
     def __init__(self):
         self.logs = []
