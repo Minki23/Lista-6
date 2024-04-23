@@ -1,9 +1,10 @@
-from SSH_reader import parse_log_entry,split_into_content, get_message_type
+from SSH_reader import parse_log_entry, split_into_content, get_message_type,ipv4_matcher
 from ipaddress import IPv4Address
 import sys
 import re
 from abc import ABC, abstractmethod
 import re
+import datetime
 global file 
 
 class SSHLogEntry(ABC):
@@ -19,7 +20,7 @@ class SSHLogEntry(ABC):
         return f'Time: {self.time}, Hostname: {self.hostname}, Raw Content: {self.raw_content}, PID: {self.pid}'
 
     def get_ipv4_address(self):
-        match = re.search(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', self.raw_content)
+        match = re.search(ipv4_matcher, self.raw_content)
         if match:
             ip_address = match.group()
             ip_address = '.'.join([str(int(segment)) for segment in ip_address.split('.')])
@@ -99,7 +100,7 @@ class OtherInfo(SSHLogEntry):
         self.info = self.raw_content 
     
     def validate(self):
-        super().validate()
+        return True
     
 class SSHLogJournal:
     def __init__(self):
@@ -132,13 +133,14 @@ class SSHLogJournal:
                 filtered_logs.append(log)
         return filtered_logs
     
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            return self.logs[index.start:index.stop:index.step]
-        elif isinstance(index, int):
-            return self.logs[index]
+    def __getitem__(self, parameter):
+        if isinstance(parameter, slice):
+            return self.logs[parameter.start:parameter.stop:parameter.step]
+        elif isinstance(parameter, int):
+            return self.logs[parameter]
         else:
             raise TypeError("Invalid index type. Expected int or slice.")
+    #by IP and Date
            
 class SSHUser:
     def __init__(self, username, last_login_date):
@@ -159,19 +161,26 @@ def main():
     user1 = SSHUser("letvuser","2024-12-12")
     user2 = SSHUser("ctssh","2024-12-12")
     user3 = SSHUser("root","2024-12-12")
+    accept = PasswordAccepted('Dec 10 06:55:48 LabSZ sshd[24200]: Failed password for invalid user webmaster from 173.234.31.186 port 38926 ssh2')
+    reject = PasswordRejected('Dec 10 06:55:48 LabSZ sshd[24200]: Failed password for invalid user webmaster from 173.234.31.186 port 38926 ssh2')
 
-    users = [user1, user2, user3]
+    users = [user1,accept, user2, reject, user3]
 
     for user in users:
-        if isinstance(user, SSHUser):
-            user.validate()
+        user.validate()
 
     journal = SSHLogJournal()
 
     with open("SSH.log", "r") as file:
         for line in file.readlines():
             journal.append(line)
-    logs = journal.get_logs_by_criteria(lambda log: log.get_ipv4_address()==IPv4Address("183.62.140.253"))
+    logs = journal.get_logs_by_criteria(lambda log: log.get_ipv4_address()==IPv4Address("212.47.254.145"))
+    print(journal.logs[0])
+    print(journal.logs[1])
+    print(journal.logs[1]==journal.logs[1])
+    print(journal.logs[0]==journal.logs[1])
+    print(journal.logs[0]<journal.logs[1])
+    print(journal.logs[0]>journal.logs[1])
     for log in logs:
         print(log)
 if __name__ == "__main__":
