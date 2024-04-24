@@ -1,4 +1,4 @@
-from SSH_reader import parse_log_entry, split_into_content, get_message_type,ipv4_matcher
+from SSH_reader import parse_log_entry, split_into_content, get_message_type,ipv4_matcher,log_dict_pattern
 from ipaddress import IPv4Address
 import sys
 import re
@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 import re
 import datetime
 global file 
-
+time_pattern = re.compile(r"(?P<month>\w{3})\s+(?P<day>\d{1,2})\s+(?P<time>\d{2}:\d{2}:\d{2})")
 class SSHLogEntry(ABC):
     def __init__(self, content:str):
         value_dict=parse_log_entry(content)
@@ -17,7 +17,7 @@ class SSHLogEntry(ABC):
         self.message=value_dict["message"]
     
     def __str__(self):
-        return f'Time: {self.time}, Hostname: {self.hostname}, Raw Content: {self.raw_content}, PID: {self.pid}'
+        return f'Time: {self.time}, Hostname: {self.hostname}, PID: {self.pid}, IPv4: {self.get_ipv4_address()}, Message: {self.message}'
 
     def get_ipv4_address(self):
         match = re.search(ipv4_matcher, self.raw_content)
@@ -103,8 +103,10 @@ class OtherInfo(SSHLogEntry):
         return True
     
 class SSHLogJournal:
+    
     def __init__(self):
-        self.logs = []
+        self.i=0
+        self.logs = {}
 
     def __len__(self):
         return len(self.logs)
@@ -124,20 +126,36 @@ class SSHLogJournal:
             log_entry = Error(content)
         else:
             log_entry = OtherInfo(content)
-        self.logs.append(log_entry)
+        self.logs[self.i]=(log_entry)
+        self.i+=1
 
     def get_logs_by_criteria(self, criteria):
         filtered_logs = []
         for log in self.logs:
-            if criteria(log):
-                filtered_logs.append(log)
+            if criteria(self.logs[log]):
+                filtered_logs.append(self.logs[log])
         return filtered_logs
     
     def __getitem__(self, parameter):
         if isinstance(parameter, slice):
-            return self.logs[parameter.start:parameter.stop:parameter.step]
+            return list(self.logs.values())[parameter.start:parameter.stop:parameter.step]
         elif isinstance(parameter, int):
             return self.logs[parameter]
+        elif isinstance(parameter, str):
+            match = re.search(ipv4_matcher, parameter)
+            if match:
+                for log in self.logs:
+                    if self.logs[log].get_ipv4_address() == IPv4Address(parameter):
+                        return self.logs[log]
+            else:
+                match = re.match(time_pattern, parameter)
+                if match:
+                    data = match.groupdict()
+                    timestamp_str = f"2024-{data['month']}-{data['day']} {data['time']}"
+                    timestamp = datetime.datetime.strptime(timestamp_str, "%Y-%b-%d %H:%M:%S")
+                    for log in self.logs:
+                        if self.logs[log].time == timestamp:
+                            return self.logs[log]
         else:
             raise TypeError("Invalid index type. Expected int or slice.")
     #by IP and Date
@@ -175,9 +193,12 @@ def main():
         for line in file.readlines():
             journal.append(line)
     logs = journal.get_logs_by_criteria(lambda log: log.get_ipv4_address()==IPv4Address("212.47.254.145"))
-    print(journal.logs[0])
-    print(journal.logs[1])
-    print(journal.logs[1]==journal.logs[1])
+    print(journal["212.47.254.145"])
+    print(journal['Dec 10 06:55:48'])
+    print(journal[0])
+    for log in journal[0:3]:
+        print(log)
+    print(journal[1]==journal[1])
     print(journal.logs[0]==journal.logs[1])
     print(journal.logs[0]<journal.logs[1])
     print(journal.logs[0]>journal.logs[1])
